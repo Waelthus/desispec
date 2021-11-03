@@ -380,7 +380,9 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
             log.error("Unrecognized data file, %s!", filepath)
             return
         if maxrows == 0:
-            maxrows = len(data)
+            mr = len(data)
+        else:
+            mr = maxrows
         log.info("Read data from %s HDU %s", filepath, hdu)
         try:
             colnames = data.names
@@ -388,7 +390,7 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
             colnames = data.colnames
         for col in colnames:
             if data[col].dtype.kind == 'f':
-                bad = np.isnan(data[col][0:maxrows])
+                bad = np.isnan(data[col][0:mr])
                 if np.any(bad):
                     nbad = bad.sum()
                     log.warning("%d rows of bad data detected in column " +
@@ -397,13 +399,13 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
                     # TODO: is this replacement appropriate for all columns?
                     # TODO: Double-check that works on unexpanded, vector-valued columns.
                     #
-                    data[col][0:maxrows][bad] = -9999.0
+                    data[col][0:mr][bad] = -9999.0
         log.info("Integrity check complete on %s.", tn)
         if rowfilter is None:
-            good_rows = np.ones((maxrows,), dtype=np.bool)
+            good_rows = np.ones((mr,), dtype=np.bool)
         else:
-            good_rows = rowfilter(data[0:maxrows])
-        data_list = [data[col][0:maxrows][good_rows].tolist() for col in colnames]
+            good_rows = rowfilter(data[0:mr])
+        data_list = [data[col][0:mr][good_rows].tolist() for col in colnames]
         data_names = [col.lower() for col in colnames]
         finalrows = len(data_list[0])
         log.info("Initial column conversion complete on %s.", tn)
@@ -501,11 +503,6 @@ def update_truth(filepath, hdu=2, chunksize=50000, skip=('SLOPES', 'EMLINES')):
                 log.warning("%d rows of bad data detected in column " +
                             "%s of %s.", nbad, col, filepath)
     log.info("Integrity check complete on %s.", tn)
-    # if rowfilter is None:
-    #     good_rows = np.ones((maxrows,), dtype=np.bool)
-    # else:
-    #     good_rows = rowfilter(data[0:maxrows])
-    # data_list = [data[col][0:maxrows][good_rows].tolist() for col in colnames]
     data_list = [data[col].tolist() for col in colnames if col not in skip]
     data_names = [col.lower() for col in colnames if col not in skip]
     data_names[0] = 'b_targetid'
