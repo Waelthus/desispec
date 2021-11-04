@@ -897,7 +897,7 @@ def main():
     :class:`int`
         An integer suitable for passing to :func:`sys.exit`.
     """
-    # from pkg_resources import resource_filename
+    global log
     #
     # command-line arguments
     #
