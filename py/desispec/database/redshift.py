@@ -398,12 +398,18 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
             if data[col].dtype.kind == 'f':
                 bad = np.isnan(data[col][0:mr])
                 if np.any(bad):
-                    nbad = bad.sum()
-                    log.warning("%d rows of bad data detected in column " +
-                                "%s of %s.", nbad, col, filepath)
+                    if bad.ndim == 1:
+                        log.warning("%d rows of bad data detected in column " +
+                                    "%s of %s.", bad.sum(), col, filepath)
+                    elif bad.ndim == 2:
+                        nbadrows = len(bad.sum(1).nonzero()[0])
+                        nbaditems = bad.sum(1).sum()
+                        log.warning("%d rows (%d items) of bad data detected in column " +
+                                    "%s of %s.", nbadrows, nbaditems, col, filepath)
+                    else:
+                        log.warning("Bad data detected in high-dimensional column %s of %s.", col, filepath)
                     #
                     # TODO: is this replacement appropriate for all columns?
-                    # TODO: Double-check that works on unexpanded, vector-valued columns.
                     #
                     data[col][0:mr][bad] = -9999.0
         log.info("Integrity check complete on %s.", tn)
