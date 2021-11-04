@@ -7,10 +7,10 @@ desispec.database.redshift
 Code for loading spectroscopic pipeline results (specifically redshifts)
 into a database.
 """
-from __future__ import absolute_import, division, print_function
 import os
 import re
 import glob
+import sys
 
 import numpy as np
 from astropy.io import fits
@@ -365,11 +365,17 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
     maxrows : :class:`int`, optional
         If set, stop loading after `maxrows` are loaded.  Alteratively,
         set `maxrows` to zero (0) to load all rows.
+
+    Returns
+    -------
+    :class:`int`
+        The grand total of rows loaded.
     """
     tn = tcls.__tablename__
     if isinstance(filepaths, str):
         filepaths = [filepaths]
     log.info("Identified %d files for ingestion.", len(filepaths))
+    loaded_rows = 0
     for filepath in filepaths:
         if filepath.endswith('.fits'):
             with fits.open(filepath) as hdulist:
@@ -383,7 +389,7 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
             mr = len(data)
         else:
             mr = maxrows
-        log.info("Read data from %s HDU %s", filepath, hdu)
+        log.info("Read %d rows of data from %s HDU %s.", len(data), filepath, hdu)
         try:
             colnames = data.names
         except AttributeError:
@@ -448,6 +454,7 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
             data_chunk = [dict(zip(data_names, row))
                           for row in data_rows[k*chunksize:(k+1)*chunksize]]
             if len(data_chunk) > 0:
+                loaded_rows += len(data_chunk)
                 engine.execute(tcls.__table__.insert(), data_chunk)
                 log.info("Inserted %d rows in %s.",
                          min((k+1)*chunksize, finalrows), tn)
@@ -462,7 +469,7 @@ def load_file(filepaths, tcls, hdu=1, expand=None, convert=None, index=None,
         # dbSession.commit()
     if q3c:
         q3c_index(tn)
-    return
+    return loaded_rows
 
 
 def update_truth(filepath, hdu=2, chunksize=50000, skip=('SLOPES', 'EMLINES')):
@@ -950,36 +957,43 @@ def main():
     #
     # Load the tables that correspond to a single file.
     #
-    for l in loader:
-        tn = l['tcls'].__tablename__
-        #
-        # Don't use .one().  It actually fetches *all* rows.
-        #
-        q = dbSession.query(l['tcls']).first()
-        if q is None:
-            if options.redrock and tn == 'zcat':
-                log.info("Loading %s from redrock files in %s.", tn, options.datapath)
-                load_redrock(datapath=options.datapath, q3c=postgresql)
-            else:
-                log.info("Loading %s from %s.", tn, l['filepath'])
-                load_file(**l)
-            log.info("Finished loading %s.", tn)
-        else:
-            log.info("%s table already loaded.", tn.title())
+    l = loader[1]
+    n_loaded = load_file(**l)
+    log.info("Grand total of %d rows inserted.", n_loaded)
+    # for l in loader:
+    #     tn = l['tcls'].__tablename__
+    #     #
+    #     # Don't use .one().  It actually fetches *all* rows.
+    #     #
+    #     q = dbSession.query(l['tcls']).first()
+    #     if q is None:
+    #         if options.redrock and tn == 'zcat':
+    #             log.info("Loading %s from redrock files in %s.", tn, options.datapath)
+    #             load_redrock(datapath=options.datapath, q3c=postgresql)
+    #         else:
+    #             log.info("Loading %s from %s.", tn, l['filepath'])
+    #             load_file(**l)
+    #         log.info("Finished loading %s.", tn)
+    #     else:
+    #         log.info("%s table already loaded.", tn.title())
     #
     # Update truth table.
     #
-    for h in ('BGS', 'ELG', 'LRG', 'QSO', 'STAR', 'WD'):
-        update_truth(os.path.join(options.datapath, 'targets', 'truth-dark.fits'),
-                     'TRUTH_' + h)
+    # for h in ('BGS', 'ELG', 'LRG', 'QSO', 'STAR', 'WD'):
+    #     update_truth(os.path.join(options.datapath, 'targets', 'truth-dark.fits'),
+    #                  'TRUTH_' + h)
     #
     # Load fiber assignment files.
     #
-    q = dbSession.query(FiberAssign).first()
-    if q is None:
-        log.info("Loading FiberAssign from %s.", options.datapath)
-        load_fiberassign(options.datapath, q3c=postgresql)
-        log.info("Finished loading FiberAssign.")
-    else:
-        log.info("FiberAssign table already loaded.")
+    # q = dbSession.query(FiberAssign).first()
+    # if q is None:
+    #     log.info("Loading FiberAssign from %s.", options.datapath)
+    #     load_fiberassign(options.datapath, q3c=postgresql)
+    #     log.info("Finished loading FiberAssign.")
+    # else:
+    #     log.info("FiberAssign table already loaded.")
     return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
